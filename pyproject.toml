@@ -1,0 +1,2 @@
+[tool.vercel]
+entrypoint = "studio.asr_worker:app"
