@@ -1,2 +1,2 @@
 [tool.vercel]
-entrypoint = "studio.asr_worker:app"
+entrypoint = "studio.server:app"

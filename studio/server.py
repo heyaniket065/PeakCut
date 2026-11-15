@@ -11,7 +11,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlsplit
 
 import sqlalchemy as sa
 import uvicorn
@@ -75,6 +75,23 @@ def _startup():
 
 
 # ================================================================ the gate: who is asking, and are they allowed
+def _same_site_origin(request: Request, origin: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+            return False
+        host = parsed.netloc.lower()
+        if host == request.headers.get("host", "").lower() and parsed.scheme == request.url.scheme:
+            return True
+        return any(
+            parsed.scheme == (allowed := urlsplit(value)).scheme
+            and host == allowed.netloc.lower()
+            for value in config.PUBLIC_ORIGINS
+        )
+    except (ValueError, TypeError):
+        return False
+
+
 class Gate:
     """Runs before every request: finds the signed-in user, blocks what needs sign-in, blocks cross-site form
     posts, caps upload size and adds security headers."""
@@ -95,7 +112,7 @@ class Gate:
 
         if method not in ("GET", "HEAD", "OPTIONS"):
             origin = req.headers.get("origin")
-            if origin and urlparse(origin).netloc != req.headers.get("host") and origin.rstrip("/") != config.PUBLIC_URL:
+            if origin and not _same_site_origin(req, origin):
                 return await deny(403, "Cross-site requests are not allowed.")
             # Only the upload may be big. Everything else is a small form, and is cut off at 256 KB whatever its
             # headers claim, so nobody can fill the server's memory by posting junk (signed in or not).
@@ -142,8 +159,8 @@ class Gate:
                 return await deny(404, "Not Found")
             if method not in ("GET", "HEAD"):
                 # changes must come from our own pages: the browser has to say so, and it has to match
-                origin = (req.headers.get("origin") or "").rstrip("/")
-                if not origin or (urlparse(origin).netloc != req.headers.get("host") and origin != config.PUBLIC_URL):
+                origin = req.headers.get("origin", "")
+                if not _same_site_origin(req, origin):
                     return await deny(403, "Cross-site requests are not allowed.")
         if not user and not is_open:
             if path == "/app" or path.startswith("/app/"):
@@ -267,7 +284,7 @@ def _own_address(host: str) -> bool:
     import ipaddress
     name = host.strip().lower()
     name = name[1:name.index("]")] if name.startswith("[") and "]" in name else name.rsplit(":", 1)[0] if ":" in name else name
-    if name in ("localhost", urlparse(config.PUBLIC_URL).hostname or "") or name.endswith(".localhost"):
+    if name in ("localhost", urlparse(config.PUBLIC_URL).hostname or "") or name in config.PUBLIC_HOSTS or name.endswith(".localhost"):
         return True
     try:
         ipaddress.ip_address(name)
