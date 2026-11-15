@@ -4,6 +4,7 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -78,7 +79,25 @@ def user_dir(uid: str) -> Path:
 # ---------------------------------------------------------------- the site
 HOST = env("PEAKCUT_HOST", "127.0.0.1")
 PORT = int(env("PEAKCUT_PORT") or "8765")
-PUBLIC_URL = (env("PEAKCUT_PUBLIC_URL") or f"http://127.0.0.1:{PORT}").rstrip("/")   # e.g. https://peakcut.com
+
+
+def _https_url(value: str) -> str:
+    value = value.strip().rstrip("/")
+    if value and "://" not in value:
+        value = "https://" + value
+    return value
+
+
+VERCEL_URLS = tuple(url for url in (
+    _https_url(env("VERCEL_PROJECT_PRODUCTION_URL", "")),
+    _https_url(env("VERCEL_URL", "")),
+) if url)
+PUBLIC_URL = (env("PEAKCUT_PUBLIC_URL") or next(iter(VERCEL_URLS), "") or f"http://127.0.0.1:{PORT}").rstrip("/")
+PUBLIC_ORIGINS = frozenset((PUBLIC_URL, *VERCEL_URLS))
+PUBLIC_HOSTS = frozenset(
+    parsed.hostname.lower() for value in PUBLIC_ORIGINS
+    if (parsed := urlsplit(value)).hostname
+)
 HTTPS = PUBLIC_URL.startswith("https://")
 SESSION_DAYS = int(env("PEAKCUT_SESSION_DAYS", "30"))
 # Accounts are off by default: PeakCut opens straight into the dashboard, with no sign-in, which is what you want

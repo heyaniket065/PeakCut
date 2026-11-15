@@ -7,7 +7,8 @@ import tempfile
 
 os.environ["PEAKCUT_DATA"] = tempfile.mkdtemp(prefix="pc-local-")
 os.environ.update(DATABASE_URL="", PEAKCUT_ACCOUNTS="0", PEAKCUT_AI_PROVIDER="gemini", PEAKCUT_AI_MODELS="", PEAKCUT_AI_KEY="",
-                  PEAKCUT_AI_KEY_FILE="", PEAKCUT_AI_BASE_URL="", PEAKCUT_PUBLIC_URL="http://127.0.0.1:8765")
+                  PEAKCUT_AI_KEY_FILE="", PEAKCUT_AI_BASE_URL="", PEAKCUT_PUBLIC_URL="http://127.0.0.1:8765",
+                  VERCEL_URL="peakcut-git-preview.vercel.app", VERCEL_PROJECT_PRODUCTION_URL="peakcut.example.com")
 sys.path.insert(0, ".")
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -40,6 +41,8 @@ check("the owner cannot delete themself", c.post("/api/account/delete", json={"c
 
 # ---- with no sign-in, the address and the sender still have to be right
 check("another website cannot change things", c.post("/api/creators", json={"name": "x"}, headers={"Origin": "https://evil.example"}).status_code, 403)
+check("the Vercel preview hostname is allowed", c.get("/api/status", headers={"Host": "peakcut-git-preview.vercel.app"}).status_code, 200)
+check("same-site Vercel Origin works behind the proxy", c.post("/api/creators", json={"name": "Vercel preview"}, headers={"Origin": "https://peakcut-git-preview.vercel.app"}).status_code, 200)
 check("a made-up name pointing at this machine is refused", c.get("/api/status", headers={"Host": "evil.example:8765"}).status_code, 403)
 for host in ("localhost:8765", "192.168.1.20:8765", "[::1]:8765", "127.0.0.1"):
     check(f"reached as {host}", c.get("/api/status", headers={"Host": host}).status_code, 200)
