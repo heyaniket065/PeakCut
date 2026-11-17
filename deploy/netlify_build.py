@@ -5,6 +5,10 @@
 Netlify can show web pages but cannot run PeakCut itself: clipping needs Python, ffmpeg, a 480 MB speech model
 and jobs that run for many minutes. So Netlify shows the home page, the legal pages and the pictures, and:
 
+Sign-in is off by default, the same as the server (PEAKCUT_ACCOUNTS): the "Sign in" and "Sign up" buttons
+become "Open PeakCut" and go straight into the app, and /login and /signup lead there too. With
+PEAKCUT_ACCOUNTS=1 the pages are left as they are.
+
 - if PEAKCUT_APP_URL is set (the address of a server running PeakCut, for example https://app.example.com),
   sign-in, sign-up and the app are passed through to that server, so people never leave this address;
 - if it is not set, those addresses show a short page saying the app is not connected yet.
@@ -27,6 +31,23 @@ APP_PATHS = ["/api/*", "/app", "/app/*", "/admin", "/admin/*", "/auth/*", "/oaut
              "/login", "/signup", "/reset", "/healthz"]
 NOT_CONNECTED = ["/app", "/app/*", "/login", "/signup", "/reset", "/admin", "/admin/*"]
 
+# with sign-in off: every "sign in" or "sign up" link opens the app instead
+NO_SIGN_IN = [
+    ('<a class="signin" href="/login" data-auth="in">Sign in</a>', ''),
+    ('href="/signup" data-auth="up">Sign up</a>', 'href="/app" data-auth="up">Open PeakCut</a>'),
+    ('href="/signup" data-auth="up2"', 'href="/app" data-auth="up2"'),
+    ('<a class="fcta" href="/signup">Sign up</a>', '<a class="fcta" href="/app">Open PeakCut</a>'),
+    ('<li><a href="/signup">Create an account</a></li><li><a href="/login">Sign in</a></li><li><a href="/reset">Reset password</a></li>',
+     '<li><a href="/app">Open PeakCut</a></li>'),
+    ('location.href = signedIn ? "/app" : "/signup";', 'location.href = "/app";'),
+]
+
+
+def no_sign_in(page: str) -> str:
+    for old, new in NO_SIGN_IN:
+        page = page.replace(old, new)
+    return page
+
 LEGAL = {
     "privacy": ("Privacy Policy", "How PeakCut collects, uses and protects your data, including Google user data, cookies and your privacy rights."),
     "terms": ("Terms of Service", "The terms for using PeakCut, the AI clipping tool for streams and videos: accounts, availability and liability."),
@@ -42,6 +63,8 @@ def main():
     # Netlify sets URL to the site's main address; PEAKCUT_PUBLIC_URL wins when it is set
     site = (env("PEAKCUT_PUBLIC_URL") or env("URL") or "http://localhost:8888").rstrip("/")
     app_url = env("PEAKCUT_APP_URL").rstrip("/")
+    accounts = env("PEAKCUT_ACCOUNTS", "0") == "1"
+    finish = (lambda page: page) if accounts else no_sign_in
 
     shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir()
@@ -52,7 +75,7 @@ def main():
     for js in WEB.glob("*.js"):
         shutil.copy2(js, OUT / "assets" / js.name)
 
-    (OUT / "index.html").write_text((WEB / "landing.html").read_text(encoding="utf-8").replace("{{SITE}}", site),
+    (OUT / "index.html").write_text(finish((WEB / "landing.html").read_text(encoding="utf-8").replace("{{SITE}}", site)),
                                     encoding="utf-8")
 
     contact = env("PEAKCUT_CONTACT_EMAIL")
@@ -68,14 +91,14 @@ def main():
         for k, v in {"{{CONTACT}}": who, "{{PAGE}}": page, "{{PAGE_PATH}}": page, "{{SITE}}": html.escape(site),
                      "{{NAME}}": name, "{{LAW}}": law, "{{TITLE}}": title, "{{DESC}}": desc}.items():
             out = out.replace(k, v)
-        (OUT / f"{page}.html").write_text(out, encoding="utf-8")
+        (OUT / f"{page}.html").write_text(finish(out), encoding="utf-8")
 
     (OUT / "robots.txt").write_text("User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /api/\nDisallow: /auth/\n"
                                     f"Disallow: /reset\nDisallow: /media/\n\nSitemap: {site}/sitemap.xml\n")
     day = time.strftime("%Y-%m-%d")
     pages = [("/", "1.0", "weekly"), ("/terms", "0.3", "yearly"), ("/privacy", "0.3", "yearly"),
              ("/acceptable-use", "0.2", "yearly")]
-    if app_url:
+    if app_url and accounts:
         pages += [("/signup", "0.8", "monthly"), ("/login", "0.4", "monthly")]
     (OUT / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
@@ -83,6 +106,9 @@ def main():
                   f"<priority>{p}</priority></url>" for u, p, c in pages) + "</urlset>")
 
     rules = ["/favicon.ico  /brand/favicon.svg  301"]
+    if not accounts:
+        # nothing to sign in to: straight into the app
+        rules += [f"{p}  /app  302!" for p in ("/login", "/signup", "/reset")]
     if app_url:
         # passed through, not sent away: the address bar stays on this site and sign-in cookies keep working
         rules += [f"{p}  {app_url}{p.replace('*', ':splat')}  200!" for p in APP_PATHS]
@@ -122,8 +148,8 @@ NOT_CONNECTED_PAGE = """<!doctype html>
 <main>
   <img src="/brand/logo.svg" alt="PeakCut">
   <h1>The app is not connected yet</h1>
-  <p>This site shows PeakCut's pages, but signing in and clipping run on a separate server that has not been
-     connected yet. Please check back soon.</p>
+  <p>This site shows PeakCut's pages, but the app that makes the clips runs on a separate server that has
+     not been connected yet. Please check back soon.</p>
   <a class="btn" href="/">Back to the home page</a>
 </main>
 </body>

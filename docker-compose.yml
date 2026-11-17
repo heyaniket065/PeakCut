@@ -28,8 +28,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://peakcut:${POSTGRES_PASSWORD}@db:5432/peakcut
       PEAKCUT_PUBLIC_URL: https://${PEAKCUT_DOMAIN:?set PEAKCUT_DOMAIN in .env}
-      # On a server everyone signs in. Set PEAKCUT_ACCOUNTS=0 in .env only if the site is private to you.
-      PEAKCUT_ACCOUNTS: ${PEAKCUT_ACCOUNTS:-1}
+      # No sign-in by default: the site opens straight into the app, and everyone shares one owner account,
+      # its videos and its AI key. Set PEAKCUT_ACCOUNTS=1 in .env to make everyone sign up and sign in.
+      PEAKCUT_ACCOUNTS: ${PEAKCUT_ACCOUNTS:-0}
     volumes:
       - data:/data
       - ./secrets:/secrets:ro
