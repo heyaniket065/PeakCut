@@ -1,0 +1,15 @@
+# Netlify shows PeakCut's public pages. The app itself (clipping, sign-in) needs its own server: see DEPLOY.md.
+# Set PEAKCUT_APP_URL in Netlify to that server's address to pass sign-in and the app through to it.
+[build]
+  command = "python3 deploy/netlify_build.py"
+  publish = "dist"
+
+[[headers]]
+  for = "/brand/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
