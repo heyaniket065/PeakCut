@@ -53,7 +53,7 @@ def _read_secret(var: str, file_var: str, pattern: str) -> str:
 
 
 # ---------------------------------------------------------------- where things live
-DATA_DIR = Path(env("PEAKCUT_DATA") or ROOT / "data")
+DATA_DIR = Path(env("PEAKCUT_DATA") or (Path("/tmp/peakcut") if env("VERCEL") else ROOT / "data"))
 USERS_DIR = DATA_DIR / "users"          # users/<user id>/{creators,jobs,accounts}
 MODELS_DIR = Path(env("PEAKCUT_MODELS") or DATA_DIR / "models")
 TMP_DIR = DATA_DIR / "tmp"
